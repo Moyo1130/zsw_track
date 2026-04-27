@@ -1,0 +1,392 @@
+{
+  "sequence": [
+    {
+      "name": "A_left_turn",
+      "description": "Target is far left, advance while turning toward target.",
+      "expected": {
+        "state": "TRACKING",
+        "linear_x": 0.12,
+        "angular_z": 0.35
+      },
+      "frame": {
+        "timestamp": 1775531706001,
+        "image_width": 1280,
+        "image_height": 720,
+        "detections": [
+          {
+            "class_name": "person",
+            "score": 0.94,
+            "bbox": {
+              "x1": 120,
+              "y1": 160,
+              "x2": 360,
+              "y2": 650
+            },
+            "track_id": 7
+          }
+        ]
+      }
+    },
+    {
+      "name": "B_right_turn",
+      "description": "Target is far right, advance while turning toward target.",
+      "expected": {
+        "state": "TRACKING",
+        "linear_x": 0.12,
+        "angular_z": -0.35
+      },
+      "frame": {
+        "timestamp": 1775531706101,
+        "image_width": 1280,
+        "image_height": 720,
+        "detections": [
+          {
+            "class_name": "person",
+            "score": 0.95,
+            "bbox": {
+              "x1": 860,
+              "y1": 170,
+              "x2": 1090,
+              "y2": 650
+            },
+            "track_id": 7
+          }
+        ]
+      }
+    },
+    {
+      "name": "LOCKED_MULTI_TARGET",
+      "description": "Keep following locked track_id 7 even when it is not the first detection.",
+      "expected": {
+        "state": "TRACKING",
+        "linear_x": 0.2,
+        "angular_z": 0.0,
+        "track_id": 7
+      },
+      "frame": {
+        "timestamp": 1775531706151,
+        "image_width": 1280,
+        "image_height": 720,
+        "detections": [
+          {
+            "class_name": "person",
+            "score": 0.88,
+            "bbox": {
+              "x1": 80,
+              "y1": 160,
+              "x2": 260,
+              "y2": 660
+            },
+            "track_id": 12
+          },
+          {
+            "class_name": "person",
+            "score": 0.92,
+            "bbox": {
+              "x1": 520,
+              "y1": 180,
+              "x2": 770,
+              "y2": 570
+            },
+            "track_id": 7
+          }
+        ]
+      }
+    },
+    {
+      "name": "C_go_straight",
+      "description": "Target is centered and still far enough away, go straight.",
+      "expected": {
+        "state": "TRACKING",
+        "linear_x": 0.2,
+        "angular_z": 0.0
+      },
+      "frame": {
+        "timestamp": 1775531706201,
+        "image_width": 1280,
+        "image_height": 720,
+        "detections": [
+          {
+            "class_name": "person",
+            "score": 0.96,
+            "bbox": {
+              "x1": 510,
+              "y1": 190,
+              "x2": 760,
+              "y2": 560
+            },
+            "track_id": 7
+          }
+        ]
+      }
+    },
+    {
+      "name": "D_stop_when_close",
+      "description": "Target is close, stop approaching.",
+      "expected": {
+        "state": "TRACKING",
+        "linear_x": 0.0,
+        "angular_z": 0.0
+      },
+      "frame": {
+        "timestamp": 1775531706301,
+        "image_width": 1280,
+        "image_height": 720,
+        "detections": [
+          {
+            "class_name": "person",
+            "score": 0.97,
+            "bbox": {
+              "x1": 470,
+              "y1": 60,
+              "x2": 830,
+              "y2": 715
+            },
+            "track_id": 7
+          }
+        ]
+      }
+    },
+    {
+      "name": "E_buffer_loss",
+      "description": "Single-frame loss enters tracking buffer and stops.",
+      "expected": {
+        "state": "TRACKING_BUFFER",
+        "linear_x": 0.0,
+        "angular_z": 0.0,
+        "lost_frame_count": 1
+      },
+      "frame": {
+        "timestamp": 1775531706401,
+        "image_width": 1280,
+        "image_height": 720,
+        "detections": []
+      }
+    },
+    {
+      "name": "E_recover_after_loss",
+      "description": "Target returns before timeout, so tracking resumes and loss count resets.",
+      "expected": {
+        "state": "TRACKING",
+        "linear_x": 0.2,
+        "angular_z": 0.0
+      },
+      "frame": {
+        "timestamp": 1775531706451,
+        "image_width": 1280,
+        "image_height": 720,
+        "detections": [
+          {
+            "class_name": "person",
+            "score": 0.95,
+            "bbox": {
+              "x1": 500,
+              "y1": 190,
+              "x2": 760,
+              "y2": 565
+            },
+            "track_id": 7
+          }
+        ]
+      }
+    },
+    {
+      "name": "F_lost_timeout_01",
+      "description": "Loss frame 1 of 10.",
+      "expected": {
+        "state": "TRACKING_BUFFER",
+        "linear_x": 0.0,
+        "angular_z": 0.0,
+        "lost_frame_count": 1
+      },
+      "frame": {
+        "timestamp": 1775531706501,
+        "image_width": 1280,
+        "image_height": 720,
+        "detections": []
+      }
+    },
+    {
+      "name": "F_lost_timeout_02",
+      "description": "Loss frame 2 of 10.",
+      "expected": {
+        "state": "TRACKING_BUFFER",
+        "linear_x": 0.0,
+        "angular_z": 0.0,
+        "lost_frame_count": 2
+      },
+      "frame": {
+        "timestamp": 1775531706601,
+        "image_width": 1280,
+        "image_height": 720,
+        "detections": []
+      }
+    },
+    {
+      "name": "F_lost_timeout_03",
+      "description": "Loss frame 3 of 10.",
+      "expected": {
+        "state": "TRACKING_BUFFER",
+        "linear_x": 0.0,
+        "angular_z": 0.0,
+        "lost_frame_count": 3
+      },
+      "frame": {
+        "timestamp": 1775531706701,
+        "image_width": 1280,
+        "image_height": 720,
+        "detections": []
+      }
+    },
+    {
+      "name": "F_lost_timeout_04",
+      "description": "Loss frame 4 of 10.",
+      "expected": {
+        "state": "TRACKING_BUFFER",
+        "linear_x": 0.0,
+        "angular_z": 0.0,
+        "lost_frame_count": 4
+      },
+      "frame": {
+        "timestamp": 1775531706801,
+        "image_width": 1280,
+        "image_height": 720,
+        "detections": []
+      }
+    },
+    {
+      "name": "F_lost_timeout_05",
+      "description": "Loss frame 5 of 10.",
+      "expected": {
+        "state": "TRACKING_BUFFER",
+        "linear_x": 0.0,
+        "angular_z": 0.0,
+        "lost_frame_count": 5
+      },
+      "frame": {
+        "timestamp": 1775531706901,
+        "image_width": 1280,
+        "image_height": 720,
+        "detections": []
+      }
+    },
+    {
+      "name": "F_lost_timeout_06",
+      "description": "Loss frame 6 of 10.",
+      "expected": {
+        "state": "TRACKING_BUFFER",
+        "linear_x": 0.0,
+        "angular_z": 0.0,
+        "lost_frame_count": 6
+      },
+      "frame": {
+        "timestamp": 1775531707001,
+        "image_width": 1280,
+        "image_height": 720,
+        "detections": []
+      }
+    },
+    {
+      "name": "F_lost_timeout_07",
+      "description": "Loss frame 7 of 10.",
+      "expected": {
+        "state": "TRACKING_BUFFER",
+        "linear_x": 0.0,
+        "angular_z": 0.0,
+        "lost_frame_count": 7
+      },
+      "frame": {
+        "timestamp": 1775531707101,
+        "image_width": 1280,
+        "image_height": 720,
+        "detections": []
+      }
+    },
+    {
+      "name": "F_lost_timeout_08",
+      "description": "Loss frame 8 of 10.",
+      "expected": {
+        "state": "TRACKING_BUFFER",
+        "linear_x": 0.0,
+        "angular_z": 0.0,
+        "lost_frame_count": 8
+      },
+      "frame": {
+        "timestamp": 1775531707201,
+        "image_width": 1280,
+        "image_height": 720,
+        "detections": []
+      }
+    },
+    {
+      "name": "F_lost_timeout_09",
+      "description": "Loss frame 9 of 10.",
+      "expected": {
+        "state": "TRACKING_BUFFER",
+        "linear_x": 0.0,
+        "angular_z": 0.0,
+        "lost_frame_count": 9
+      },
+      "frame": {
+        "timestamp": 1775531707301,
+        "image_width": 1280,
+        "image_height": 720,
+        "detections": []
+      }
+    },
+    {
+      "name": "F_lost_timeout_10",
+      "description": "Loss frame 10 of 10, transition to TRACKING_LOST.",
+      "expected": {
+        "state": "TRACKING_LOST",
+        "linear_x": 0.0,
+        "angular_z": 0.0,
+        "lost_frame_count": 10
+      },
+      "frame": {
+        "timestamp": 1775531707401,
+        "image_width": 1280,
+        "image_height": 720,
+        "detections": []
+      }
+    },
+    {
+      "name": "NO_TRACK_ID_FIRST_PERSON",
+      "description": "When unlocked, pick the first person even if it has no track_id.",
+      "expected": {
+        "state": "TRACKING",
+        "linear_x": 0.2,
+        "angular_z": 0.0,
+        "track_id": null
+      },
+      "frame": {
+        "timestamp": 1775531707501,
+        "image_width": 1280,
+        "image_height": 720,
+        "detections": [
+          {
+            "class_name": "person",
+            "score": 0.9,
+            "bbox": {
+              "x1": 540,
+              "y1": 200,
+              "x2": 760,
+              "y2": 590
+            }
+          },
+          {
+            "class_name": "person",
+            "score": 0.95,
+            "bbox": {
+              "x1": 120,
+              "y1": 180,
+              "x2": 360,
+              "y2": 650
+            },
+            "track_id": 88
+          }
+        ]
+      }
+    }
+  ]
+}

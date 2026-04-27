@@ -1,0 +1,3 @@
+python track_live.py --yolo-ws ws://10.61.248.46:8001/ws/detection --ip 10.61.248.46 --turn-axis-min 0.30 --turn-axis-max 0.32 --action-s 0.10 --cooldown-s 0.10 --start-norm 0.30 --stop-norm 0.15 --seen-n 4
+
+python -m http.server 5173 --bind 0.0.0.0

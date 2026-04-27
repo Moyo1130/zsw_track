@@ -1,0 +1,315 @@
+{
+  "sequence": [
+    {
+      "name": "START_LOCK_7",
+      "description": "See track_id 7 first and lock onto it.",
+      "expected": {
+        "state": "TRACKING",
+        "linear_x": 0.0,
+        "angular_z": 0.35,
+        "track_id": 7
+      },
+      "frame": {
+        "timestamp": 1775531720001,
+        "image_width": 1280,
+        "image_height": 720,
+        "detections": [
+          {
+            "class_name": "person",
+            "score": 0.94,
+            "bbox": {
+              "x1": 120,
+              "y1": 160,
+              "x2": 360,
+              "y2": 650
+            },
+            "track_id": 7
+          }
+        ]
+      }
+    },
+    {
+      "name": "KEEP_LOCK_7_WHEN_NOT_FIRST",
+      "description": "Another person appears first, but the controller should keep following locked track_id 7.",
+      "expected": {
+        "state": "TRACKING",
+        "linear_x": 0.2,
+        "angular_z": 0.0,
+        "track_id": 7
+      },
+      "frame": {
+        "timestamp": 1775531720101,
+        "image_width": 1280,
+        "image_height": 720,
+        "detections": [
+          {
+            "class_name": "person",
+            "score": 0.88,
+            "bbox": {
+              "x1": 920,
+              "y1": 170,
+              "x2": 1160,
+              "y2": 650
+            },
+            "track_id": 12
+          },
+          {
+            "class_name": "person",
+            "score": 0.93,
+            "bbox": {
+              "x1": 500,
+              "y1": 180,
+              "x2": 740,
+              "y2": 560
+            },
+            "track_id": 7
+          }
+        ]
+      }
+    },
+    {
+      "name": "LOCKED_TARGET_MISSING_BUT_OTHER_PERSON_PRESENT",
+      "description": "Locked target 7 disappears while another person remains, so the controller should enter buffer instead of switching targets.",
+      "expected": {
+        "state": "TRACKING_BUFFER",
+        "linear_x": 0.0,
+        "angular_z": 0.0,
+        "lost_frame_count": 1
+      },
+      "frame": {
+        "timestamp": 1775531720201,
+        "image_width": 1280,
+        "image_height": 720,
+        "detections": [
+          {
+            "class_name": "person",
+            "score": 0.9,
+            "bbox": {
+              "x1": 820,
+              "y1": 170,
+              "x2": 1040,
+              "y2": 640
+            },
+            "track_id": 12
+          }
+        ]
+      }
+    },
+    {
+      "name": "REACQUIRE_LOCK_7",
+      "description": "Track 7 reappears before timeout and should resume tracking with loss count reset.",
+      "expected": {
+        "state": "TRACKING",
+        "linear_x": 0.08,
+        "angular_z": -0.2,
+        "track_id": 7
+      },
+      "frame": {
+        "timestamp": 1775531720301,
+        "image_width": 1280,
+        "image_height": 720,
+        "detections": [
+          {
+            "class_name": "person",
+            "score": 0.95,
+            "bbox": {
+              "x1": 630,
+              "y1": 180,
+              "x2": 850,
+              "y2": 580
+            },
+            "track_id": 7
+          }
+        ]
+      }
+    },
+    {
+      "name": "LOSS_TO_TIMEOUT_01",
+      "description": "Loss frame 1 of 10 after reacquire.",
+      "expected": {
+        "state": "TRACKING_BUFFER",
+        "linear_x": 0.0,
+        "angular_z": 0.0,
+        "lost_frame_count": 1
+      },
+      "frame": {
+        "timestamp": 1775531720401,
+        "image_width": 1280,
+        "image_height": 720,
+        "detections": []
+      }
+    },
+    {
+      "name": "LOSS_TO_TIMEOUT_02",
+      "description": "Loss frame 2 of 10 after reacquire.",
+      "expected": {
+        "state": "TRACKING_BUFFER",
+        "linear_x": 0.0,
+        "angular_z": 0.0,
+        "lost_frame_count": 2
+      },
+      "frame": {
+        "timestamp": 1775531720501,
+        "image_width": 1280,
+        "image_height": 720,
+        "detections": []
+      }
+    },
+    {
+      "name": "LOSS_TO_TIMEOUT_03",
+      "description": "Loss frame 3 of 10 after reacquire.",
+      "expected": {
+        "state": "TRACKING_BUFFER",
+        "linear_x": 0.0,
+        "angular_z": 0.0,
+        "lost_frame_count": 3
+      },
+      "frame": {
+        "timestamp": 1775531720601,
+        "image_width": 1280,
+        "image_height": 720,
+        "detections": []
+      }
+    },
+    {
+      "name": "LOSS_TO_TIMEOUT_04",
+      "description": "Loss frame 4 of 10 after reacquire.",
+      "expected": {
+        "state": "TRACKING_BUFFER",
+        "linear_x": 0.0,
+        "angular_z": 0.0,
+        "lost_frame_count": 4
+      },
+      "frame": {
+        "timestamp": 1775531720701,
+        "image_width": 1280,
+        "image_height": 720,
+        "detections": []
+      }
+    },
+    {
+      "name": "LOSS_TO_TIMEOUT_05",
+      "description": "Loss frame 5 of 10 after reacquire.",
+      "expected": {
+        "state": "TRACKING_BUFFER",
+        "linear_x": 0.0,
+        "angular_z": 0.0,
+        "lost_frame_count": 5
+      },
+      "frame": {
+        "timestamp": 1775531720801,
+        "image_width": 1280,
+        "image_height": 720,
+        "detections": []
+      }
+    },
+    {
+      "name": "LOSS_TO_TIMEOUT_06",
+      "description": "Loss frame 6 of 10 after reacquire.",
+      "expected": {
+        "state": "TRACKING_BUFFER",
+        "linear_x": 0.0,
+        "angular_z": 0.0,
+        "lost_frame_count": 6
+      },
+      "frame": {
+        "timestamp": 1775531720901,
+        "image_width": 1280,
+        "image_height": 720,
+        "detections": []
+      }
+    },
+    {
+      "name": "LOSS_TO_TIMEOUT_07",
+      "description": "Loss frame 7 of 10 after reacquire.",
+      "expected": {
+        "state": "TRACKING_BUFFER",
+        "linear_x": 0.0,
+        "angular_z": 0.0,
+        "lost_frame_count": 7
+      },
+      "frame": {
+        "timestamp": 1775531721001,
+        "image_width": 1280,
+        "image_height": 720,
+        "detections": []
+      }
+    },
+    {
+      "name": "LOSS_TO_TIMEOUT_08",
+      "description": "Loss frame 8 of 10 after reacquire.",
+      "expected": {
+        "state": "TRACKING_BUFFER",
+        "linear_x": 0.0,
+        "angular_z": 0.0,
+        "lost_frame_count": 8
+      },
+      "frame": {
+        "timestamp": 1775531721101,
+        "image_width": 1280,
+        "image_height": 720,
+        "detections": []
+      }
+    },
+    {
+      "name": "LOSS_TO_TIMEOUT_09",
+      "description": "Loss frame 9 of 10 after reacquire.",
+      "expected": {
+        "state": "TRACKING_BUFFER",
+        "linear_x": 0.0,
+        "angular_z": 0.0,
+        "lost_frame_count": 9
+      },
+      "frame": {
+        "timestamp": 1775531721201,
+        "image_width": 1280,
+        "image_height": 720,
+        "detections": []
+      }
+    },
+    {
+      "name": "LOSS_TO_TIMEOUT_10",
+      "description": "Loss frame 10 of 10 after reacquire, transition to TRACKING_LOST.",
+      "expected": {
+        "state": "TRACKING_LOST",
+        "linear_x": 0.0,
+        "angular_z": 0.0,
+        "lost_frame_count": 10
+      },
+      "frame": {
+        "timestamp": 1775531721301,
+        "image_width": 1280,
+        "image_height": 720,
+        "detections": []
+      }
+    },
+    {
+      "name": "NEW_TARGET_AFTER_RESET",
+      "description": "After timeout clears the lock, a new person can be selected and tracked.",
+      "expected": {
+        "state": "TRACKING",
+        "linear_x": 0.2,
+        "angular_z": 0.0,
+        "track_id": 42
+      },
+      "frame": {
+        "timestamp": 1775531721401,
+        "image_width": 1280,
+        "image_height": 720,
+        "detections": [
+          {
+            "class_name": "person",
+            "score": 0.96,
+            "bbox": {
+              "x1": 520,
+              "y1": 190,
+              "x2": 760,
+              "y2": 570
+            },
+            "track_id": 42
+          }
+        ]
+      }
+    }
+  ]
+}

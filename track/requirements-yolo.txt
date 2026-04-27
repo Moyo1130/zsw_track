@@ -1,0 +1,3 @@
+# YOLO WebSocket 探测脚本 yolo_ws_probe.py
+websockets>=12.0
+python-dotenv>=1.0.0

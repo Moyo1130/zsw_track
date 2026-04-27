@@ -1,0 +1,251 @@
+{
+  "sequence": [
+    {
+      "name": "MODERATE_LEFT_AT_NEG150",
+      "description": "Offset is exactly -150, so the controller should slow-forward left instead of rotating in place.",
+      "expected": {
+        "state": "TRACKING",
+        "linear_x": 0.08,
+        "angular_z": 0.2,
+        "track_id": null
+      },
+      "frame": {
+        "timestamp": 1775531710001,
+        "image_width": 1280,
+        "image_height": 720,
+        "detections": [
+          {
+            "class_name": "person",
+            "score": 0.91,
+            "bbox": {
+              "x1": 380,
+              "y1": 170,
+              "x2": 600,
+              "y2": 590
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "MODERATE_RIGHT_AT_POS150",
+      "description": "Offset is exactly 150, so the controller should slow-forward right instead of rotating in place.",
+      "expected": {
+        "state": "TRACKING",
+        "linear_x": 0.08,
+        "angular_z": -0.2,
+        "track_id": null
+      },
+      "frame": {
+        "timestamp": 1775531710101,
+        "image_width": 1280,
+        "image_height": 720,
+        "detections": [
+          {
+            "class_name": "person",
+            "score": 0.92,
+            "bbox": {
+              "x1": 680,
+              "y1": 170,
+              "x2": 900,
+              "y2": 590
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "STRAIGHT_AT_NEG50",
+      "description": "Offset is exactly -50, which should still count as centered enough to go straight.",
+      "expected": {
+        "state": "TRACKING",
+        "linear_x": 0.2,
+        "angular_z": 0.0,
+        "track_id": null
+      },
+      "frame": {
+        "timestamp": 1775531710201,
+        "image_width": 1280,
+        "image_height": 720,
+        "detections": [
+          {
+            "class_name": "person",
+            "score": 0.93,
+            "bbox": {
+              "x1": 480,
+              "y1": 200,
+              "x2": 700,
+              "y2": 580
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "STRAIGHT_AT_POS50",
+      "description": "Offset is exactly 50, which should still count as centered enough to go straight.",
+      "expected": {
+        "state": "TRACKING",
+        "linear_x": 0.2,
+        "angular_z": 0.0,
+        "track_id": null
+      },
+      "frame": {
+        "timestamp": 1775531710301,
+        "image_width": 1280,
+        "image_height": 720,
+        "detections": [
+          {
+            "class_name": "person",
+            "score": 0.94,
+            "bbox": {
+              "x1": 580,
+              "y1": 200,
+              "x2": 800,
+              "y2": 580
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "CLOSE_TARGET_OVERRIDES_TURN",
+      "description": "A close target should stop the robot even if the target is far to the left.",
+      "expected": {
+        "state": "TRACKING",
+        "linear_x": 0.0,
+        "angular_z": 0.0,
+        "track_id": null
+      },
+      "frame": {
+        "timestamp": 1775531710401,
+        "image_width": 1280,
+        "image_height": 720,
+        "detections": [
+          {
+            "class_name": "person",
+            "score": 0.97,
+            "bbox": {
+              "x1": 100,
+              "y1": 40,
+              "x2": 400,
+              "y2": 680
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "NON_PERSON_ONLY",
+      "description": "No person appears in the frame, so the controller should enter the loss buffer.",
+      "expected": {
+        "state": "TRACKING_BUFFER",
+        "linear_x": 0.0,
+        "angular_z": 0.0,
+        "lost_frame_count": 1
+      },
+      "frame": {
+        "timestamp": 1775531710501,
+        "image_width": 1280,
+        "image_height": 720,
+        "detections": [
+          {
+            "class_name": "dog",
+            "score": 0.89,
+            "bbox": {
+              "x1": 300,
+              "y1": 180,
+              "x2": 520,
+              "y2": 620
+            }
+          },
+          {
+            "class_name": "cat",
+            "score": 0.84,
+            "bbox": {
+              "x1": 700,
+              "y1": 220,
+              "x2": 860,
+              "y2": 420
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "MIXED_CLASSES_PICK_PERSON",
+      "description": "Ignore non-person detections and choose the first valid person target.",
+      "expected": {
+        "state": "TRACKING",
+        "linear_x": 0.08,
+        "angular_z": -0.2,
+        "track_id": null
+      },
+      "frame": {
+        "timestamp": 1775531710601,
+        "image_width": 1280,
+        "image_height": 720,
+        "detections": [
+          {
+            "class_name": "dog",
+            "score": 0.9,
+            "bbox": {
+              "x1": 100,
+              "y1": 170,
+              "x2": 360,
+              "y2": 640
+            }
+          },
+          {
+            "class_name": "person",
+            "score": 0.95,
+            "bbox": {
+              "x1": 630,
+              "y1": 190,
+              "x2": 850,
+              "y2": 590
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "FIRST_PERSON_PRIORITY_WITHOUT_TRACK_ID",
+      "description": "When unlocked, the first person should be used even if a later person has a track_id.",
+      "expected": {
+        "state": "TRACKING",
+        "linear_x": 0.08,
+        "angular_z": 0.2,
+        "track_id": null
+      },
+      "frame": {
+        "timestamp": 1775531710701,
+        "image_width": 1280,
+        "image_height": 720,
+        "detections": [
+          {
+            "class_name": "person",
+            "score": 0.9,
+            "bbox": {
+              "x1": 430,
+              "y1": 200,
+              "x2": 650,
+              "y2": 590
+            }
+          },
+          {
+            "class_name": "person",
+            "score": 0.96,
+            "bbox": {
+              "x1": 520,
+              "y1": 180,
+              "x2": 760,
+              "y2": 560
+            },
+            "track_id": 55
+          }
+        ]
+      }
+    }
+  ]
+}

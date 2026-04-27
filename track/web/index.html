@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Track Live - WS Box 可视化</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <div class="app">
+      <header class="header">
+        <div class="title">
+          <div class="h1">WS Box 实时可视化</div>
+          <div class="sub">
+            连接 `track_live.py` 使用的 YOLO WebSocket：实时绘制 bbox，并计算/显示控制指令（linear_x / angular_z）
+          </div>
+        </div>
+        <div class="status">
+          <span class="dot" id="connDot" aria-hidden="true"></span>
+          <span id="connText">未连接</span>
+        </div>
+      </header>
+
+      <section class="panel">
+        <div class="controls">
+          <div class="row">
+            <label class="label" for="wsUrl">WS 地址</label>
+            <input
+              id="wsUrl"
+              class="input"
+              type="text"
+              spellcheck="false"
+              value="ws://10.61.248.46:8001/ws/detection"
+            />
+          </div>
+          <div class="row">
+            <label class="label" for="token">token（可选）</label>
+            <input id="token" class="input" type="password" spellcheck="false" placeholder="API_TOKEN" />
+          </div>
+          <div class="row buttons">
+            <button id="btnConnect" class="btn primary">连接</button>
+            <button id="btnDisconnect" class="btn" disabled>断开</button>
+          </div>
+
+          <hr class="sep" />
+
+          <div class="grid2">
+            <div class="row">
+              <label class="label" for="kAng">k_ang</label>
+              <input id="kAng" class="input" type="number" step="0.05" value="1.10" />
+            </div>
+            <div class="row">
+              <label class="label" for="angMax">ang_max</label>
+              <input id="angMax" class="input" type="number" step="0.05" value="0.55" />
+            </div>
+            <div class="row">
+              <label class="label" for="desiredFill">desired_fill</label>
+              <input id="desiredFill" class="input" type="number" step="0.01" value="0.70" />
+            </div>
+            <div class="row">
+              <label class="label" for="kLin">k_lin</label>
+              <input id="kLin" class="input" type="number" step="0.05" value="0.90" />
+            </div>
+            <div class="row">
+              <label class="label" for="linMax">lin_max</label>
+              <input id="linMax" class="input" type="number" step="0.01" value="0.25" />
+            </div>
+            <div class="row">
+              <label class="label" for="alpha">smooth_alpha</label>
+              <input id="alpha" class="input" type="number" step="0.01" value="0.75" min="0" max="0.98" />
+            </div>
+          </div>
+
+          <div class="row">
+            <label class="label" for="targetMode">目标选择</label>
+            <select id="targetMode" class="input">
+              <option value="first">persons[0]</option>
+              <option value="largest">面积最大</option>
+              <option value="highest_conf">置信度最高</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="viz">
+          <div class="canvasWrap">
+            <canvas id="canvas" width="1280" height="720"></canvas>
+            <div class="overlay" id="overlayText"></div>
+          </div>
+
+          <div class="telemetry">
+            <div class="card">
+              <div class="cardTitle">当前帧</div>
+              <div class="kv">
+                <div class="k">timestamp</div>
+                <div class="v" id="ts">-</div>
+                <div class="k">frame</div>
+                <div class="v" id="frameWH">-</div>
+                <div class="k">persons</div>
+                <div class="v" id="personsCount">-</div>
+                <div class="k">track_id</div>
+                <div class="v" id="trackId">-</div>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="cardTitle">bbox / 几何</div>
+              <div class="kv">
+                <div class="k">bbox</div>
+                <div class="v" id="bbox">-</div>
+                <div class="k">center_offset_x</div>
+                <div class="v" id="offsetPx">-</div>
+                <div class="k">norm_offset</div>
+                <div class="v" id="offsetNorm">-</div>
+                <div class="k">fill_ratio</div>
+                <div class="v" id="fillRatio">-</div>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="cardTitle">输出指令（前端计算）</div>
+              <div class="kv">
+                <div class="k">linear_x</div>
+                <div class="v mono" id="cmdLin">-</div>
+                <div class="k">angular_z</div>
+                <div class="v mono" id="cmdAng">-</div>
+                <div class="k">说明</div>
+                <div class="v" id="reason">-</div>
+              </div>
+            </div>
+
+            <div class="card small">
+              <div class="cardTitle">提示</div>
+              <div class="hint">
+                - 如果你在浏览器里连不到 `ws://`，很可能是页面是 `file://` 打开的。请用本地静态服务器打开。
+                <br />
+                - 你也可以把 token 填上，页面会自动追加 `?token=`。
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
+

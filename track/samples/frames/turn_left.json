@@ -1,0 +1,13 @@
+{
+  "timestamp": 1775531706001,
+  "image_width": 1280,
+  "image_height": 720,
+  "detections": [
+    {
+      "class_name": "person",
+      "score": 0.94,
+      "bbox": { "x1": 120, "y1": 160, "x2": 360, "y2": 650 },
+      "track_id": 7
+    }
+  ]
+}
