@@ -21,8 +21,8 @@ FrameInput → P4TrackerController → TwistCommand → 轴速度映射 → tota
   python track_json_one.py samples/frames/turn_left.json --dry-run
   python track_live.py --yolo-url http://127.0.0.1:8080/detections --poll-hz 10
   # 真机 YOLO WebSocket（token 在 .env API_TOKEN，见 YOLO客户端开发文档.md）
-  python track_live.py --dry-run --yolo-ws ws://10.69.235.139:8001/ws/detection
-  python track_live.py --yolo-ws ws://10.69.235.139:8001/ws/detection
+  python track_live.py --dry-run --yolo-ws ws://10.61.248.65:8001/ws/detection
+  python track_live.py --yolo-ws ws://10.61.248.65:8001/ws/detection
 """
 
 from __future__ import annotations
@@ -46,7 +46,8 @@ from p4_tracker.controller import TRACKING
 from totalController import Controller
 from udp_motion_demo import SoftExitController, run_axis_motion, safe_stop
 
-DEFAULT_IP = "10.69.235.139"
+DEFAULT_IP = "10.61.248.65"
+DEFAULT_YOLO_WS = f"ws://{DEFAULT_IP}:8001/ws/detection"
 DEFAULT_PORT = 43893
 ZERO_EPS = 1e-6
 # 与 track_json_one 一致：enable 后给固件一点时间再发轴流；仅在「静止→运动」首帧需要
@@ -509,10 +510,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="只打印映射结果，不连接机器狗",
     )
+    # 现场调试优先调整：转向阈值、动作/冷却时长、前进增益和期望框高占比。
     parser.add_argument(
         "--forward-gain",
         type=float,
-        default=2.0,
+        default=2.5,
         help="前进轴：linear_x 乘该系数后再限幅；仅允许正向前进，不做后退",
     )
     parser.add_argument(
@@ -524,7 +526,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--forward-axis-max",
         type=float,
-        default=0.32,
+        default=0.35,
         help="最大前进轴幅度（限制不要冲得太猛）",
     )
     parser.add_argument(
@@ -536,56 +538,56 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--turn-axis-min",
         type=float,
-        default=_MIN_EFFECTIVE_TURN,
+        default=0.30,
         help="最小有效转向轴幅度（需 >~0.29 才能跨越固件死区）",
     )
     parser.add_argument(
         "--turn-axis-max",
         type=float,
-        default=0.40,
+        default=0.32,
         help="最大转向轴幅度（限制不要转得过猛）",
     )
     parser.add_argument(
         "--desired-fill",
         type=float,
-        default=0.50,
-        help="目标框高占画面高度的期望比例；fill 小于该值时才前进（默认 0.50）",
+        default=0.85,
+        help="目标框高占画面高度的期望比例；fill 小于该值时才前进（默认 0.85）",
     )
     parser.add_argument(
         "--far-start-boost",
         type=float,
-        default=0.10,
+        default=0.15,
         help="目标较远时额外抬高的 start_norm 上限增量，减少远距离小偏差导致的过度转向",
     )
     parser.add_argument(
         "--start-norm",
         type=float,
-        default=0.22,
+        default=0.30,
         help="触发转向动作的归一化偏差阈值 |norm|>=start 才转（建议 0.15~0.35）",
     )
     parser.add_argument(
         "--stop-norm",
         type=float,
-        default=0.10,
+        default=0.15,
         help="退出修正的归一化偏差阈值 |norm|<=stop 认为已对准（需 < start，用于迟滞）",
     )
     parser.add_argument(
         "--seen-n",
         type=int,
-        default=2,
+        default=4,
         help="连续看到目标 N 帧且满足偏差条件才触发一次动作（可抑制误检/抖动）",
     )
     parser.add_argument(
         "--action-s",
         type=float,
-        default=0.35,
+        default=0.10,
         metavar="SEC",
         help="一次转向动作持续时间（秒）。执行期间保持当前 turn 脉冲；前进仍按最新目标持续更新。",
     )
     parser.add_argument(
         "--cooldown-s",
         type=float,
-        default=0.15,
+        default=0.10,
         metavar="SEC",
         help="转向动作结束后的冷却时间（秒）。冷却期间 turn 保持 0，但前进仍可继续。",
     )
@@ -604,7 +606,7 @@ def parse_args() -> argparse.Namespace:
     src.add_argument(
         "--yolo-ws",
         default=None,
-        help="YOLO WebSocket（YOLO客户端开发文档）：如 ws://狗IP:8001/ws/detection，token 用 .env API_TOKEN",
+        help=f"YOLO WebSocket（YOLO客户端开发文档）：默认 {DEFAULT_YOLO_WS}，token 用 .env API_TOKEN",
     )
     parser.add_argument(
         "--delay",
@@ -859,7 +861,7 @@ def main() -> None:
         return
 
     if args.scenarios is None and args.yolo_url is None and args.yolo_ws is None:
-        args.scenarios = Path("samples/scenarios.json")
+        args.yolo_ws = DEFAULT_YOLO_WS
 
     tracker = P4TrackerController(desired_fill_ratio=float(args.desired_fill))
 
