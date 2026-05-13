@@ -100,9 +100,9 @@ VOICE_COMMANDS = {
     "HEAD_UP": 9,  # 抬头
     "LOOK_LEFT": 11,  # 向左看
     "LOOK_RIGHT": 12,  # 向右看
-    "TURN_LEFT_90": 13,  # 向左转90°
-    "TURN_RIGHT_90": 14,  # 向右转90°
-    "TURN_180": 15,  # 向后转180°
+    "TURN_LEFT_90": 13,  # 向左转90 deg
+    "TURN_RIGHT_90": 14,  # 向右转90 deg
+    "TURN_180": 15,  # 向后转180 deg
     "GREET": 22,  # 打招呼
 }
 
@@ -176,9 +176,9 @@ class Controller:
         try:
             self.socket.sendto(pack, self.dst)
         except socket.error as e:
-            print(f"❌ 发送失败: {e}")
+            print(f"[ERROR] 发送失败: {e}")
         except Exception as e:
-            print(f"❌ 未知错误: {e}")
+            print(f"[ERROR] 未知错误: {e}")
 
     def _send_command(self, command, val1=0, val2=0):
         """
@@ -216,7 +216,7 @@ class Controller:
             self.heartbeat_running = True
             self.heartbeat_thread = threading.Thread(target=self._heartbeat_loop, args=(frequency,), daemon=True)
             self.heartbeat_thread.start()
-            print(f"✓ 心跳线程已启动 (频率: {frequency}Hz)")
+            print(f"[OK] 心跳线程已启动 (频率: {frequency}Hz)")
     
     def _heartbeat_loop(self, frequency):
         """心跳循环"""
@@ -231,7 +231,7 @@ class Controller:
             self.heartbeat_running = False
             if self.heartbeat_thread:
                 self.heartbeat_thread.join(timeout=2)
-            print("✓ 心跳线程已停止")
+            print("[OK] 心跳线程已停止")
 
     def init_robot(self):
         """初始化机器人关节"""
@@ -249,7 +249,7 @@ class Controller:
         5. 切换到自动模式
         """
         print("\n" + "="*50)
-        print("🤖 开始初始化机器人")
+        print("[ROBOT] 开始初始化机器人")
         print("="*50)
         
         try:
@@ -278,12 +278,12 @@ class Controller:
             time.sleep(1)
 
             print("\n" + "="*50)
-            print("✓ 机器人初始化完成，准备就绪！")
+            print("[OK] 机器人初始化完成，准备就绪！")
             print("="*50 + "\n")
             return True
             
         except Exception as e:
-            print(f"\n❌ 初始化失败: {e}")
+            print(f"\n[ERROR] 初始化失败: {e}")
             self.stop_heartbeat()
             return False
 
@@ -637,11 +637,11 @@ class Controller:
         注意：
             - 轴指令取值范围为[-32767,32767]
             - 死区范围（低于此值机器人将停止移动）：
-              * 前后平移: [-6553,6553] 对应速度约 ±0.2
-              * 左右平移: [-12553,12553] 对应速度约 ±0.38
-              * 左右转弯: [-9553,9553] 对应速度约 ±0.29
+              * 前后平移: [-6553,6553] 对应速度约 +/-0.2
+              * 左右平移: [-12553,12553] 对应速度约 +/-0.38
+              * 左右转弯: [-9553,9553] 对应速度约 +/-0.29
             - 建议设置速度参数时避免死区，确保有效控制
-            - 轴指令频率应≥20Hz，超时250ms，建议使用start_continuous_move()
+            - 轴指令频率应>=20Hz，超时250ms，建议使用start_continuous_move()
         """
         # 将-1.0到1.0的速度映射到指令值范围
         forward_val = int(forward_speed * 32767)
@@ -659,7 +659,7 @@ class Controller:
     def start_continuous_move(self, forward_speed=0.0, side_speed=0.0, turn_speed=0.0, frequency=20):
         """
         启动持续移动模式，以指定频率持续发送轴指令
-        文档要求：轴指令频率≥20Hz，超时时间250ms
+        文档要求：轴指令频率>=20Hz，超时时间250ms
         
         参数:
             forward_speed (float): 前后平移速度 (-1.0 到 1.0)
@@ -670,7 +670,7 @@ class Controller:
         if self.move_running:
             # 如果已经在运行，更新参数
             self.move_params = (forward_speed, side_speed, turn_speed)
-            # print(f"✓ 更新移动参数: 前进={forward_speed:.2f}, 侧移={side_speed:.2f}, 转向={turn_speed:.2f}")
+            # print(f"[OK] 更新移动参数: 前进={forward_speed:.2f}, 侧移={side_speed:.2f}, 转向={turn_speed:.2f}")
         else:
             self.move_running = True
             self.move_params = (forward_speed, side_speed, turn_speed)
@@ -683,7 +683,7 @@ class Controller:
             
             self.move_thread = threading.Thread(target=move_loop, daemon=True)
             self.move_thread.start()
-            print(f"✓ 持续移动已启动 (频率: {frequency}Hz)")
+            print(f"[OK] 持续移动已启动 (频率: {frequency}Hz)")
     
     def stop_continuous_move(self):
         """停止持续移动模式"""
@@ -693,7 +693,7 @@ class Controller:
                 self.move_thread.join(timeout=1)
             time.sleep(0.1)
             self.stop()
-            print("✓ 持续移动已停止")
+            print("[OK] 持续移动已停止")
 
     def stop(self):
         """停止所有移动"""
@@ -1081,9 +1081,9 @@ class Controller:
         # 关闭socket
         try:
             self.socket.close()
-            print("✓ 控制器已关闭\n")
+            print("[OK] 控制器已关闭\n")
         except Exception as e:
-            print(f"❌ 关闭socket失败: {e}\n")
+            print(f"[ERROR] 关闭socket失败: {e}\n")
     
     def __enter__(self):
         """支持上下文管理器 - 进入"""

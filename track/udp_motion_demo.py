@@ -54,9 +54,9 @@ class SoftExitController(Controller):
         time.sleep(0.2)
         try:
             self.socket.close()
-            print("✓ 控制器已关闭\n")
+            print("[OK] 控制器已关闭\n")
         except OSError as e:
-            print(f"❌ 关闭socket失败: {e}\n")
+            print(f"[ERROR] 关闭socket失败: {e}\n")
 
 
 DEFAULT_IP = "10.69.235.139"  # 按现场改；控制端需与狗网络互通

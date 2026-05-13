@@ -30,6 +30,19 @@ def _websockets():
     return import_module("websockets")
 
 
+def _load_env_token() -> str:
+    try:
+        from dotenv import load_dotenv
+    except ImportError:
+        return os.getenv("API_TOKEN", "").strip()
+
+    root_env = Path(__file__).resolve().parent / ".env"
+    track_env = TRACK_DIR / ".env"
+    load_dotenv(root_env)
+    load_dotenv(track_env, override=False)
+    return os.getenv("API_TOKEN", "").strip()
+
+
 class FollowState(str, Enum):
     PATROL = "PATROL"
     TRACKING_LOCK = "TRACKING_LOCK"
@@ -57,18 +70,25 @@ class PersonFollowStateMachine:
         self,
         *,
         tracking: TrackingManager,
-        lock_confirm_frames: int = 1,
+        lock_confirm_frames: int = 5,
+        min_person_score: float = 0.75,
+        min_person_height_ratio: float = 0.20,
         pause_reason: str = "person_follow_interrupt",
     ) -> None:
         self.tracking = tracking
         self.lock_confirm_frames = max(1, int(lock_confirm_frames))
+        self.min_person_score = float(min_person_score)
+        self.min_person_height_ratio = float(min_person_height_ratio)
         self.pause_reason = pause_reason
         self.state = FollowState.PATROL
         self.previous_state = FollowState.PATROL
         self.lock_seen_frames = 0
         self.locked_track_id: int | None = None
+        self.pending_track_id: int | None = None
         self.last_error: str | None = None
         self.patrol_context: dict[str, Any] = {}
+        self._return_cleanup_done = False
+        self._resume_attempt_count = 0
 
     async def handle_frame(self, frame: FrameInput) -> StateSnapshot:
         try:
@@ -101,28 +121,45 @@ class PersonFollowStateMachine:
         return self._snapshot()
 
     async def _handle_patrol(self, frame: FrameInput) -> StateSnapshot:
-        if not self._has_person(frame):
+        candidate = self._select_lock_candidate(frame)
+        if candidate is None:
             return self._snapshot()
+        self.pending_track_id = candidate.track_id
         self.lock_seen_frames = 0
         self._set_state(FollowState.TRACKING_LOCK)
         return await self._handle_tracking_lock(frame)
 
     async def _handle_tracking_lock(self, frame: FrameInput) -> StateSnapshot:
-        if not self._has_person(frame):
+        candidate = self._select_lock_candidate(frame)
+        if candidate is None:
             self.lock_seen_frames = 0
+            self.pending_track_id = None
             self.locked_track_id = None
             self._set_state(FollowState.PATROL)
             return self._snapshot()
 
-        self.lock_seen_frames += 1
+        if (
+            self.pending_track_id is not None
+            and candidate.track_id is not None
+            and candidate.track_id != self.pending_track_id
+        ):
+            self.pending_track_id = candidate.track_id
+            self.lock_seen_frames = 1
+        else:
+            self.lock_seen_frames += 1
+
         if self.lock_seen_frames < self.lock_confirm_frames:
             return self._snapshot()
 
         await self._pause_patrol()
         if not self.tracking.start():
             raise RuntimeError("tracking manager start failed")
+        self._return_cleanup_done = False
+        self._resume_attempt_count = 0
+        self.last_error = None
         output = self.tracking.update(frame)
         self.locked_track_id = output.selected_track_id
+        self.pending_track_id = None
         self._set_state(FollowState.TRACKING)
         return self._snapshot(output)
 
@@ -140,11 +177,23 @@ class PersonFollowStateMachine:
         output: TrackingOutput | None = None,
     ) -> StateSnapshot:
         self._set_state(FollowState.RETURN_TO_PATROL)
-        self.tracking.stop()
-        self.tracking.reset()
+        if not self._return_cleanup_done:
+            self.tracking.stop()
+            self.tracking.reset()
+            self._return_cleanup_done = True
         self.lock_seen_frames = 0
         self.locked_track_id = None
-        await self._resume_patrol()
+        self.pending_track_id = None
+
+        try:
+            await self._resume_patrol()
+        except Exception as exc:
+            self.last_error = str(exc)
+            return self._snapshot(output)
+
+        self._return_cleanup_done = False
+        self._resume_attempt_count = 0
+        self.last_error = None
         self._set_state(FollowState.PATROL)
         return self._snapshot(output)
 
@@ -168,9 +217,28 @@ class PersonFollowStateMachine:
     async def _resume_patrol(self) -> None:
         patrol_api = _patrol_api()
         websockets = _websockets()
-        async with websockets.connect(patrol_api.WS_URL) as ws:
-            resp = await patrol_api.resume_patrol_workflow(ws)
-        patrol_api.PATROL_RUNTIME_STATE["last_response"] = {"resume_workflow": resp}
+        last_error: Exception | None = None
+
+        for attempt in range(1, 6):
+            self._resume_attempt_count += 1
+            try:
+                await asyncio.sleep(0.5 * attempt)
+                async with websockets.connect(patrol_api.WS_URL) as ws:
+                    resp = await patrol_api.resume_patrol_workflow(ws)
+                patrol_api.PATROL_RUNTIME_STATE["last_response"] = {
+                    "resume_workflow": resp
+                }
+                return
+            except Exception as exc:
+                last_error = exc
+                self.last_error = (
+                    f"resume retry {attempt}/5 failed "
+                    f"(total={self._resume_attempt_count}): {exc}"
+                )
+
+        raise RuntimeError(
+            f"resume patrol failed after retries: {last_error}"
+        )
 
     def _set_state(self, state: FollowState) -> None:
         if state == self.state:
@@ -201,9 +269,24 @@ class PersonFollowStateMachine:
             tracking=tracking,
         )
 
-    @staticmethod
-    def _has_person(frame: FrameInput) -> bool:
-        return any(item.class_name == "person" for item in frame.detections)
+    def _select_lock_candidate(self, frame: FrameInput):
+        candidates = [
+            item
+            for item in frame.detections
+            if self._is_valid_person(item, frame)
+        ]
+        if not candidates:
+            return None
+        return max(candidates, key=lambda item: item.score)
+
+    def _is_valid_person(self, detection, frame: FrameInput) -> bool:
+        if detection.class_name != "person":
+            return False
+        if detection.score < self.min_person_score:
+            return False
+        bbox_height = detection.bbox.y2 - detection.bbox.y1
+        height_ratio = bbox_height / max(frame.image_height, 1)
+        return height_ratio >= self.min_person_height_ratio
 
 
 def parse_args() -> argparse.Namespace:
@@ -217,7 +300,7 @@ def parse_args() -> argparse.Namespace:
 
 async def run_yolo_state_machine(args: argparse.Namespace) -> None:
     websockets = _websockets()
-    token = os.getenv("API_TOKEN", "").strip()
+    token = _load_env_token()
     uri = normalize_yolo_ws_uri(args.yolo_ws, token) if token else args.yolo_ws
     robot = None if args.dry_run else Controller((args.ip, args.port))
     tracking = TrackingManager(robot=robot, dry_run=args.dry_run)
@@ -230,7 +313,7 @@ async def run_yolo_state_machine(args: argparse.Namespace) -> None:
                 continue
             frame = FrameInput.from_yolo_ws_payload(msg)
             snapshot = await machine.handle_frame(frame)
-            print(json.dumps(asdict(snapshot), ensure_ascii=False))
+            print(json.dumps(asdict(snapshot)))
 
 
 if __name__ == "__main__":

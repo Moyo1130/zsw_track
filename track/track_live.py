@@ -3,7 +3,7 @@
 """
 Tracker 联机控狗（简化版）
 
-FrameInput → P4TrackerController → TwistCommand → 轴速度映射 → totalController.Controller
+FrameInput -> P4TrackerController -> TwistCommand -> 轴速度映射 -> totalController.Controller
 
 分步验证（建议顺序）：
   1) 映射是否正确（不连狗）：
@@ -14,15 +14,15 @@ FrameInput → P4TrackerController → TwistCommand → 轴速度映射 → tota
   3) 完整闭环：python track_live.py --dry-run / 去 --dry-run 接 YOLO 或 scenarios
 
 用法示例：
-  # JSON scenarios → Tracker → UDP（先 dry-run 再打狗）
+  # JSON scenarios -> Tracker -> UDP（先 dry-run 再打狗）
   python track_live.py --dry-run --scenarios samples/scenarios.json
   python track_live.py --scenarios samples/scenarios.json --delay 0.15 --ip 10.69.235.139
   # 单帧 JSON 打一次动作（适合一条一条试）：
   python track_json_one.py samples/frames/turn_left.json --dry-run
   python track_live.py --yolo-url http://127.0.0.1:8080/detections --poll-hz 10
   # 真机 YOLO WebSocket（token 在 .env API_TOKEN，见 YOLO客户端开发文档.md）
-  python track_live.py --dry-run --yolo-ws ws://10.61.248.65:8001/ws/detection
-  python track_live.py --yolo-ws ws://10.61.248.65:8001/ws/detection
+  python track_live.py --dry-run --yolo-ws ws://10.69.235.139:8001/ws/detection
+  python track_live.py --yolo-ws ws://10.69.235.139:8001/ws/detection
 """
 
 from __future__ import annotations
@@ -46,15 +46,15 @@ from p4_tracker.controller import TRACKING
 from totalController import Controller
 from udp_motion_demo import SoftExitController, run_axis_motion, safe_stop
 
-DEFAULT_IP = "10.61.248.65"
+DEFAULT_IP = "10.69.235.139"
 DEFAULT_YOLO_WS = f"ws://{DEFAULT_IP}:8001/ws/detection"
 DEFAULT_PORT = 43893
 ZERO_EPS = 1e-6
-# 与 track_json_one 一致：enable 后给固件一点时间再发轴流；仅在「静止→运动」首帧需要
+# 与 track_json_one 一致：enable 后给固件一点时间再发轴流；仅在「静止->运动」首帧需要
 _ENABLE_SETTLE_S = 0.15
 
-# totalController.move 注释：前后轴约 ±0.2、转向约 ±0.29 以内为死区，再小则不动
-# （6553/32767≈0.20，9553/32767≈0.29）抬升值必须 **严格大于** 死区边界，否则固件直接忽略该轴。
+# totalController.move 注释：前后轴约 +/-0.2、转向约 +/-0.29 以内为死区，再小则不动
+# （6553/32767~=0.20，9553/32767~=0.29）抬升值必须 **严格大于** 死区边界，否则固件直接忽略该轴。
 # 前进只做正向跟随，不做后退；左右继续沿用现有稳定的转向门控。
 _MIN_EFFECTIVE_FORWARD = 0.22
 # turn_axis_min 默认用 ~0.32 越过 0.29，确保真机会转起来。
@@ -86,10 +86,10 @@ def twist_to_turn_axis(
     turn_axis_max: float = 0.40,
 ) -> float:
     """
-    yaw-only：TwistCommand → turn_speed（-1~1）。
+    yaw-only：TwistCommand -> turn_speed（-1~1）。
 
     - 狗：turn_speed > 0 为右转
-    - Tracker/ROS：angular_z > 0 常为左转 → turn_speed = -angular_z
+    - Tracker/ROS：angular_z > 0 常为左转 -> turn_speed = -angular_z
     - turn_axis_min/turn_axis_max 用于把转向限制在“小幅度”，同时跨越固件转向死区（约 0.29）
     """
     turn = max(-1.0, min(1.0, (-cmd.angular_z) * turn_gain))
@@ -338,34 +338,34 @@ def prepare_robot_for_tracking(robot: Controller) -> bool:
     """
     追踪专用初始化：不调用 Controller.initialize()（其中含自动模式，易覆盖起立姿态）。
 
-    顺序与 udp_connect_stand 一致：心跳 → 手动 → STAND → 移动模式 → 再手动。
+    顺序与 udp_connect_stand 一致：心跳 -> 手动 -> STAND -> 移动模式 -> 再手动。
     持续运动：追踪中静止帧只发零轴，退出时在 main 的 finally 里 safe_stop 关通道。
     """
     print("\n" + "=" * 50)
-    print("🤖 追踪：起立与模式（无自动模式）")
+    print("[ROBOT] 追踪：起立与模式（无自动模式）")
     print("=" * 50)
     try:
-        print("\n[1/5] 启动心跳…")
+        print("\n[1/5] 启动心跳...")
         robot.start_heartbeat(frequency=2.0)
         time.sleep(1.0)
-        print("\n[2/5] 切换到手动模式…")
+        print("\n[2/5] 切换到手动模式...")
         robot.switch_to_manual_mode()
         time.sleep(0.5)
-        print("\n[3/5] 起立（语音 STAND）…")
+        print("\n[3/5] 起立（语音 STAND）...")
         robot.voice_command("STAND")
         time.sleep(3.0)
-        print("\n[4/5] 切换到移动模式…")
+        print("\n[4/5] 切换到移动模式...")
         robot.switch_to_move_mode()
         time.sleep(0.5)
-        print("\n[5/5] 再次手动模式（UDP 连续轴控）…")
+        print("\n[5/5] 再次手动模式（UDP 连续轴控）...")
         robot.switch_to_manual_mode()
         time.sleep(0.3)
         print("\n" + "=" * 50)
-        print("✓ 追踪就绪（请确认机器狗已站立）")
+        print("[OK] 追踪就绪（请确认机器狗已站立）")
         print("=" * 50 + "\n")
         return True
     except Exception as e:
-        print(f"\n❌ 追踪初始化失败: {e}")
+        print(f"\n[ERROR] 追踪初始化失败: {e}")
         try:
             robot.stop_heartbeat()
         except OSError:
@@ -451,7 +451,7 @@ def print_check_mapping(
 
 
 def run_smoke_udp(args: argparse.Namespace) -> None:
-    """短动作烟测：前进 → 停 → 左转 → 右转，复用 udp_motion_demo.run_axis_motion。"""
+    """短动作烟测：前进 -> 停 -> 左转 -> 右转，复用 udp_motion_demo.run_axis_motion。"""
     speed = args.smoke_speed
     duration = args.smoke_duration
     pause = args.smoke_pause
@@ -480,7 +480,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--check-mapping",
         action="store_true",
-        help="只打印 Twist→轴映射表（不连狗），用于与 P4 文档对照",
+        help="只打印 Twist->轴映射表（不连狗），用于与 P4 文档对照",
     )
     parser.add_argument(
         "--smoke-udp",
@@ -601,7 +601,7 @@ def parse_args() -> argparse.Namespace:
     src.add_argument(
         "--yolo-url",
         default=None,
-        help="轮询 YOLO HTTP，返回体符合 P4 §3（含 code）或 §4 内层 JSON",
+        help="轮询 YOLO HTTP，返回体符合 P4 section 3（含 code）或 section 4 内层 JSON",
     )
     src.add_argument(
         "--yolo-ws",
@@ -779,7 +779,7 @@ def run_yolo_ws(
     try:
         asyncio.run(_loop())
     except KeyboardInterrupt:
-        print("\n退出中…")
+        print("\n退出中...")
 
 
 def run_http(
