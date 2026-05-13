@@ -73,9 +73,16 @@ class TrackingManager:
         self.active = True
         return True
 
-    def stop(self) -> None:
+    def stop(self, *, restore_auto: bool = False) -> None:
         if self.robot is not None and not self.dry_run:
             safe_stop(self.robot)
+            if restore_auto:
+                try:
+                    self.robot.switch_to_auto_mode()
+                    time.sleep(0.2)
+                    self.robot.stop_heartbeat()
+                except Exception as exc:
+                    print(f"release tracking control failed: {exc}")
         self.active = False
 
     def reset(self) -> None:

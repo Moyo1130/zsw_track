@@ -178,7 +178,7 @@ class PersonFollowStateMachine:
     ) -> StateSnapshot:
         self._set_state(FollowState.RETURN_TO_PATROL)
         if not self._return_cleanup_done:
-            self.tracking.stop()
+            self.tracking.stop(restore_auto=True)
             self.tracking.reset()
             self._return_cleanup_done = True
         self.lock_seen_frames = 0
@@ -224,10 +224,28 @@ class PersonFollowStateMachine:
             try:
                 await asyncio.sleep(0.5 * attempt)
                 async with websockets.connect(patrol_api.WS_URL) as ws:
+                    auto_resp = await patrol_api.switch_to_auto_mode(ws)
+                    await asyncio.sleep(0.5)
                     resp = await patrol_api.resume_patrol_workflow(ws)
-                patrol_api.PATROL_RUNTIME_STATE["last_response"] = {
-                    "resume_workflow": resp
+                    await asyncio.sleep(0.5)
+                    status = await patrol_api.get_robot_status(ws)
+                    context = await patrol_api.get_robot_context(ws)
+                if resp.get("success") == 0:
+                    raise RuntimeError(resp.get("message", f"resume failed: {resp}"))
+                resume_context = {
+                    "auto_mode": auto_resp,
+                    "resume_workflow": resp,
+                    "post_resume_status": status,
+                    "post_resume_context": context,
                 }
+                patrol_api.PATROL_RUNTIME_STATE["last_response"] = {
+                    "resume_workflow": resp,
+                    "auto_mode": auto_resp,
+                    "post_resume_status": status,
+                    "post_resume_context": context,
+                }
+                patrol_api.PATROL_RUNTIME_STATE["mode"] = "running"
+                self.patrol_context.update(resume_context)
                 return
             except Exception as exc:
                 last_error = exc
