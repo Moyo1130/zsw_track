@@ -61,6 +61,7 @@ class StateSnapshot:
     last_error: str | None = None
     patrol_context: dict[str, Any] = field(default_factory=dict)
     tracking: dict[str, Any] = field(default_factory=dict)
+    detection_debug: dict[str, Any] = field(default_factory=dict)
 
 
 class PersonFollowStateMachine:
@@ -71,15 +72,21 @@ class PersonFollowStateMachine:
         *,
         tracking: TrackingManager,
         lock_confirm_frames: int = 5,
-        min_person_score: float = 0.75,
-        min_person_height_ratio: float = 0.20,
+        min_person_score: float = 0.70,
+        min_person_height_ratio: float = 0.15,
         pause_reason: str = "person_follow_interrupt",
+        map_name: str | None = None,
+        route_name: str | None = None,
+        rebuild_on_bad_resume: bool = True,
     ) -> None:
         self.tracking = tracking
         self.lock_confirm_frames = max(1, int(lock_confirm_frames))
         self.min_person_score = float(min_person_score)
         self.min_person_height_ratio = float(min_person_height_ratio)
         self.pause_reason = pause_reason
+        self.map_name = map_name
+        self.route_name = route_name
+        self.rebuild_on_bad_resume = rebuild_on_bad_resume
         self.state = FollowState.PATROL
         self.previous_state = FollowState.PATROL
         self.lock_seen_frames = 0
@@ -87,6 +94,7 @@ class PersonFollowStateMachine:
         self.pending_track_id: int | None = None
         self.last_error: str | None = None
         self.patrol_context: dict[str, Any] = {}
+        self.detection_debug: dict[str, Any] = {}
         self._return_cleanup_done = False
         self._resume_attempt_count = 0
 
@@ -210,6 +218,7 @@ class PersonFollowStateMachine:
                 "robot_status": status,
                 "robot_context": context,
                 "pause_response": resp,
+                "resume_plan": self._build_resume_plan(context),
             }
         )
         patrol_api.PATROL_RUNTIME_STATE["last_response"] = {"pause_workflow": resp}
@@ -227,22 +236,46 @@ class PersonFollowStateMachine:
                     auto_resp = await patrol_api.switch_to_auto_mode(ws)
                     await asyncio.sleep(0.5)
                     resp = await patrol_api.resume_patrol_workflow(ws)
+                    if resp.get("success") == 0:
+                        raise RuntimeError(
+                            resp.get("message", f"resume failed: {resp}")
+                        )
                     await asyncio.sleep(0.5)
                     status = await patrol_api.get_robot_status(ws)
                     context = await patrol_api.get_robot_context(ws)
-                if resp.get("success") == 0:
-                    raise RuntimeError(resp.get("message", f"resume failed: {resp}"))
+                    restart_resp = None
+                    restart_status = None
+                    restart_context = None
+                    if (
+                        self.rebuild_on_bad_resume
+                        and self._should_rebuild_after_resume(status, context)
+                    ):
+                        restart_resp = await patrol_api.restart_patrol_from_waypoint(
+                            ws,
+                            self._resolve_resume_map_name(),
+                            self._resolve_resume_route_name(context),
+                            self._resolve_resume_start_index(),
+                        )
+                        await asyncio.sleep(0.5)
+                        restart_status = await patrol_api.get_robot_status(ws)
+                        restart_context = await patrol_api.get_robot_context(ws)
                 resume_context = {
                     "auto_mode": auto_resp,
                     "resume_workflow": resp,
                     "post_resume_status": status,
                     "post_resume_context": context,
+                    "restart_from_waypoint": restart_resp,
+                    "post_restart_status": restart_status,
+                    "post_restart_context": restart_context,
                 }
                 patrol_api.PATROL_RUNTIME_STATE["last_response"] = {
                     "resume_workflow": resp,
                     "auto_mode": auto_resp,
                     "post_resume_status": status,
                     "post_resume_context": context,
+                    "restart_from_waypoint": restart_resp,
+                    "post_restart_status": restart_status,
+                    "post_restart_context": restart_context,
                 }
                 patrol_api.PATROL_RUNTIME_STATE["mode"] = "running"
                 self.patrol_context.update(resume_context)
@@ -257,6 +290,108 @@ class PersonFollowStateMachine:
         raise RuntimeError(
             f"resume patrol failed after retries: {last_error}"
         )
+
+    @staticmethod
+    def _int_or_none(value: Any) -> int | None:
+        try:
+            if value is None or value == "":
+                return None
+            return int(value)
+        except (TypeError, ValueError):
+            return None
+
+    def _build_resume_plan(self, context: dict[str, Any]) -> dict[str, Any]:
+        data = context.get("data") or {}
+        current_index = self._int_or_none(data.get("current_waypoint_index"))
+        last_index = self._int_or_none(data.get("last_arrived_waypoint_index"))
+        if current_index is not None and (
+            last_index is None or current_index > last_index
+        ):
+            start_index = current_index
+        elif last_index is not None:
+            start_index = last_index + 1
+        else:
+            start_index = current_index or 1
+
+        return {
+            "map_name": self.map_name,
+            "route_name": (
+                self.route_name
+                or data.get("route_name")
+                or data.get("tree_name")
+                or data.get("workflow_name")
+            ),
+            "start_index": max(1, start_index),
+            "pause_current_waypoint_index": current_index,
+            "pause_current_waypoint_name": data.get("current_waypoint_name"),
+            "pause_last_arrived_waypoint_index": last_index,
+            "pause_last_arrived_waypoint_name": data.get("last_arrived_waypoint_name"),
+        }
+
+    def _resolve_resume_map_name(self) -> str:
+        plan = self.patrol_context.get("resume_plan") or {}
+        map_name = (
+            self.map_name
+            or plan.get("map_name")
+            or self.patrol_context.get("map_name")
+        )
+        if not map_name:
+            raise RuntimeError("map_name is required for patrol workflow rebuild")
+        return str(map_name)
+
+    def _resolve_resume_route_name(self, context: dict[str, Any]) -> str:
+        plan = self.patrol_context.get("resume_plan") or {}
+        data = context.get("data") or {}
+        route_name = (
+            self.route_name
+            or plan.get("route_name")
+            or data.get("route_name")
+            or data.get("tree_name")
+            or data.get("workflow_name")
+            or self.patrol_context.get("route_name")
+            or self.patrol_context.get("workflow_name")
+        )
+        if not route_name:
+            raise RuntimeError("route_name is required for patrol workflow rebuild")
+        return str(route_name)
+
+    def _resolve_resume_start_index(self) -> int:
+        plan = self.patrol_context.get("resume_plan") or {}
+        start_index = self._int_or_none(plan.get("start_index"))
+        return max(1, start_index or 1)
+
+    def _should_rebuild_after_resume(
+        self,
+        status: dict[str, Any],
+        context: dict[str, Any],
+    ) -> bool:
+        data = context.get("data") or {}
+        status_data = status.get("data") or {}
+        current_index = self._int_or_none(data.get("current_waypoint_index"))
+        last_index = self._int_or_none(data.get("last_arrived_waypoint_index"))
+        expected_index = self._resolve_resume_start_index()
+
+        if current_index is not None and current_index < expected_index:
+            return True
+        if (
+            current_index is not None
+            and last_index is not None
+            and last_index > 0
+            and current_index <= last_index
+        ):
+            return True
+
+        tasks = status_data.get("tasks")
+        running_tasks = []
+        if isinstance(tasks, list):
+            running_tasks = [
+                item
+                for item in tasks
+                if isinstance(item, dict)
+                and item.get("status") == 1
+                and item.get("name") != "report"
+            ]
+        return len(running_tasks) > 1
 
     def _set_state(self, state: FollowState) -> None:
         if state == self.state:
@@ -285,14 +420,71 @@ class PersonFollowStateMachine:
             last_error=self.last_error,
             patrol_context=self.patrol_context,
             tracking=tracking,
+            detection_debug=self.detection_debug,
         )
 
     def _select_lock_candidate(self, frame: FrameInput):
-        candidates = [
-            item
-            for item in frame.detections
-            if self._is_valid_person(item, frame)
-        ]
+        candidates = []
+        person_count = 0
+        score_rejected_count = 0
+        height_rejected_count = 0
+        best_person = None
+        best_person_score = None
+        best_person_height_ratio = None
+        max_person_height_ratio = None
+
+        for item in frame.detections:
+            if item.class_name != "person":
+                continue
+
+            person_count += 1
+            bbox_height = item.bbox.y2 - item.bbox.y1
+            height_ratio = bbox_height / max(frame.image_height, 1)
+
+            if best_person is None or item.score > best_person.score:
+                best_person = item
+                best_person_score = item.score
+                best_person_height_ratio = height_ratio
+            if max_person_height_ratio is None or height_ratio > max_person_height_ratio:
+                max_person_height_ratio = height_ratio
+
+            if item.score < self.min_person_score:
+                score_rejected_count += 1
+                continue
+            if height_ratio < self.min_person_height_ratio:
+                height_rejected_count += 1
+                continue
+
+            candidates.append(item)
+
+        if not frame.detections:
+            reject_reason = "no_detections"
+        elif person_count == 0:
+            reject_reason = "no_person"
+        elif candidates:
+            reject_reason = "valid_person"
+        elif score_rejected_count == person_count:
+            reject_reason = "score_below_threshold"
+        elif height_rejected_count == person_count:
+            reject_reason = "height_ratio_below_threshold"
+        else:
+            reject_reason = "score_or_height_ratio_below_threshold"
+
+        self.detection_debug = {
+            "detections_count": len(frame.detections),
+            "person_count": person_count,
+            "valid_person_count": len(candidates),
+            "best_person_score": best_person_score,
+            "best_person_height_ratio": best_person_height_ratio,
+            "max_person_height_ratio": max_person_height_ratio,
+            "best_person_track_id": None if best_person is None else best_person.track_id,
+            "min_person_score": self.min_person_score,
+            "min_person_height_ratio": self.min_person_height_ratio,
+            "score_rejected_count": score_rejected_count,
+            "height_rejected_count": height_rejected_count,
+            "reject_reason": reject_reason,
+        }
+
         if not candidates:
             return None
         return max(candidates, key=lambda item: item.score)
@@ -312,6 +504,21 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--yolo-ws", default=DEFAULT_YOLO_WS)
     parser.add_argument("--ip", default=DEFAULT_IP)
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
+    parser.add_argument(
+        "--map-name",
+        default=os.getenv("PATROL_MAP_NAME", "0317_1"),
+        help="Map name used when rebuilding remaining patrol workflow.",
+    )
+    parser.add_argument(
+        "--route-name",
+        default=os.getenv("PATROL_ROUTE_NAME"),
+        help="Route name fallback when robot context does not provide it.",
+    )
+    parser.add_argument(
+        "--no-rebuild-on-bad-resume",
+        action="store_true",
+        help="Disable rebuilding remaining patrol workflow after bad resume state.",
+    )
     parser.add_argument("--dry-run", action="store_true")
     return parser.parse_args()
 
@@ -322,7 +529,12 @@ async def run_yolo_state_machine(args: argparse.Namespace) -> None:
     uri = normalize_yolo_ws_uri(args.yolo_ws, token) if token else args.yolo_ws
     robot = None if args.dry_run else Controller((args.ip, args.port))
     tracking = TrackingManager(robot=robot, dry_run=args.dry_run)
-    machine = PersonFollowStateMachine(tracking=tracking)
+    machine = PersonFollowStateMachine(
+        tracking=tracking,
+        map_name=args.map_name,
+        route_name=args.route_name,
+        rebuild_on_bad_resume=not args.no_rebuild_on_bad_resume,
+    )
     async with websockets.connect(uri, ping_interval=None) as ws:
         async for raw in ws:
             msg = json.loads(raw)

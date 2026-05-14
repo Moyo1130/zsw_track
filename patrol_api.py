@@ -92,14 +92,19 @@ def resolve_gait_cmd_code(obstacle_gait: Any) -> str:
     return str(0x21010300)
 
 
-def build_behavior_tree_xml(route_name: str, points: List[Dict[str, Any]]) -> str:
+def build_behavior_tree_xml(
+    route_name: str,
+    points: List[Dict[str, Any]],
+    *,
+    point_start_index: int = 1,
+) -> str:
     root = Element("root", {"BTCPP_format": "4"})
     behavior_tree = SubElement(root, "BehaviorTree")
     main_seq = SubElement(behavior_tree, "Sequence")
 
     SubElement(main_seq, "InspectionDataCollector", {"action": "clear"})
 
-    for i, point in enumerate(points, start=1):
+    for i, point in enumerate(points, start=point_start_index):
         point_id = f"point_{i}"
         point_name = as_text(point.get("point_name"), f"导航点{i}")
         pos = point.get("position") or {}
@@ -290,6 +295,68 @@ async def pause_patrol_workflow(ws, reason: str) -> dict:
 async def resume_patrol_workflow(ws) -> dict:
     payload = make_msg("robot", "resume_workflow")
     return await send_and_wait(ws, payload)
+
+
+async def restart_patrol_from_waypoint(
+    ws,
+    map_name: str,
+    route_name: str,
+    start_index: int,
+) -> dict:
+    """Rebuild patrol workflow with remaining waypoints from start_index.
+
+    This is an application-level fallback for unreliable workflow resume
+    cursor state after person-follow interruption.
+    """
+    if not map_name:
+        raise ValueError("map_name is required to rebuild patrol workflow")
+    if not route_name:
+        raise ValueError("route_name is required to rebuild patrol workflow")
+
+    path_resp = await get_patrol_path(ws, map_name, route_name)
+    path_data = path_resp.get("data") or {}
+    points = path_data.get("points") or []
+    if not points:
+        raise RuntimeError("patrol path has no points")
+
+    safe_start_index = max(1, int(start_index))
+    if safe_start_index > len(points):
+        safe_start_index = len(points)
+    remaining_points = points[safe_start_index - 1 :]
+    workflow_name = f"{route_name}_resume_{safe_start_index}_{uuid.uuid4().hex[:8]}"
+    xml_content = build_behavior_tree_xml(
+        route_name,
+        remaining_points,
+        point_start_index=safe_start_index,
+    )
+
+    stop_resp = await stop_patrol_workflow(ws)
+    await asyncio.sleep(0.5)
+    tree_resp = await upload_behavior_tree(ws, workflow_name, xml_content)
+    await asyncio.sleep(0.5)
+    start_resp = await start_patrol_workflow(ws, workflow_name)
+
+    resp = {
+        "workflow_name": workflow_name,
+        "map_name": map_name,
+        "route_name": route_name,
+        "start_index": safe_start_index,
+        "remaining_count": len(remaining_points),
+        "stop_workflow": stop_resp,
+        "path": path_resp,
+        "set_tree": tree_resp,
+        "start_workflow": start_resp,
+    }
+    PATROL_RUNTIME_STATE.update({
+        "mode": "running",
+        "map_name": map_name,
+        "route_name": route_name,
+        "workflow_name": workflow_name,
+        "path_data": path_data,
+        "last_error": None,
+        "last_response": {"restart_from_waypoint": resp},
+    })
+    return resp
 
 
 async def do_prepare(map_name: str, stand_up_first: bool, switch_auto: bool):
