@@ -5,7 +5,9 @@ import asyncio
 import json
 import os
 import sys
+import time
 from dataclasses import asdict, dataclass, field
+from datetime import datetime
 from enum import Enum
 from importlib import import_module
 from pathlib import Path
@@ -62,6 +64,7 @@ class StateSnapshot:
     patrol_context: dict[str, Any] = field(default_factory=dict)
     tracking: dict[str, Any] = field(default_factory=dict)
     detection_debug: dict[str, Any] = field(default_factory=dict)
+    timing: dict[str, Any] = field(default_factory=dict)
 
 
 class PersonFollowStateMachine:
@@ -97,6 +100,12 @@ class PersonFollowStateMachine:
         self.detection_debug: dict[str, Any] = {}
         self._return_cleanup_done = False
         self._resume_attempt_count = 0
+        self._run_started_monotonic = time.monotonic()
+        self._run_started_wall_iso = self._now_iso()
+        self._state_entered_monotonic = self._run_started_monotonic
+        self._state_entered_wall_iso = self._run_started_wall_iso
+        self._state_sequence = 0
+        self._last_transition: dict[str, Any] | None = None
 
     async def handle_frame(self, frame: FrameInput) -> StateSnapshot:
         try:
@@ -393,13 +402,37 @@ class PersonFollowStateMachine:
             ]
         return len(running_tasks) > 1
 
+    @staticmethod
+    def _now_iso() -> str:
+        return datetime.now().astimezone().isoformat(timespec="milliseconds")
+
     def _set_state(self, state: FollowState) -> None:
         if state == self.state:
             return
+        now_monotonic = time.monotonic()
+        now_iso = self._now_iso()
+        previous_duration_s = now_monotonic - self._state_entered_monotonic
+        old_state = self.state
         self.previous_state = self.state
         self.state = state
+        self._state_sequence += 1
+        self._last_transition = {
+            "from": old_state,
+            "to": state,
+            "at_iso": now_iso,
+            "run_elapsed_s": round(
+                now_monotonic - self._run_started_monotonic,
+                3,
+            ),
+            "previous_state_duration_s": round(previous_duration_s, 3),
+        }
+        self._state_entered_monotonic = now_monotonic
+        self._state_entered_wall_iso = now_iso
 
     def _snapshot(self, output: TrackingOutput | None = None) -> StateSnapshot:
+        now_monotonic = time.monotonic()
+        now_epoch = time.time()
+        now_iso = self._now_iso()
         tracking: dict[str, Any] = {}
         if output is not None:
             tracking = {
@@ -412,6 +445,22 @@ class PersonFollowStateMachine:
                 "controller_state": output.command.state,
                 "reason": output.command.reason,
             }
+        timing = {
+            "timestamp_iso": now_iso,
+            "timestamp_epoch_s": round(now_epoch, 3),
+            "run_started_at_iso": self._run_started_wall_iso,
+            "run_elapsed_s": round(
+                now_monotonic - self._run_started_monotonic,
+                3,
+            ),
+            "state_entered_at_iso": self._state_entered_wall_iso,
+            "state_elapsed_s": round(
+                now_monotonic - self._state_entered_monotonic,
+                3,
+            ),
+            "state_sequence": self._state_sequence,
+            "last_transition": self._last_transition,
+        }
         return StateSnapshot(
             state=self.state,
             previous_state=self.previous_state,
@@ -421,6 +470,7 @@ class PersonFollowStateMachine:
             patrol_context=self.patrol_context,
             tracking=tracking,
             detection_debug=self.detection_debug,
+            timing=timing,
         )
 
     def _select_lock_candidate(self, frame: FrameInput):
