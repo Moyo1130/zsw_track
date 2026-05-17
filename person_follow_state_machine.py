@@ -4,6 +4,7 @@ import argparse
 import asyncio
 import json
 import os
+import re
 import sys
 import time
 from dataclasses import asdict, dataclass, field
@@ -245,13 +246,19 @@ class PersonFollowStateMachine:
                     auto_resp = await patrol_api.switch_to_auto_mode(ws)
                     await asyncio.sleep(0.5)
                     resp = await patrol_api.resume_patrol_workflow(ws)
-                    if resp.get("success") == 0:
-                        raise RuntimeError(
-                            resp.get("message", f"resume failed: {resp}")
-                        )
                     await asyncio.sleep(0.5)
                     status = await patrol_api.get_robot_status(ws)
                     context = await patrol_api.get_robot_context(ws)
+                    resume_already_running = False
+                    if resp.get("success") == 0:
+                        resume_already_running = self._is_patrol_running(
+                            status,
+                            context,
+                        )
+                        if not resume_already_running:
+                            raise RuntimeError(
+                                resp.get("message", f"resume failed: {resp}")
+                            )
                     restart_resp = None
                     restart_status = None
                     restart_context = None
@@ -271,6 +278,7 @@ class PersonFollowStateMachine:
                 resume_context = {
                     "auto_mode": auto_resp,
                     "resume_workflow": resp,
+                    "resume_already_running": resume_already_running,
                     "post_resume_status": status,
                     "post_resume_context": context,
                     "restart_from_waypoint": restart_resp,
@@ -279,6 +287,7 @@ class PersonFollowStateMachine:
                 }
                 patrol_api.PATROL_RUNTIME_STATE["last_response"] = {
                     "resume_workflow": resp,
+                    "resume_already_running": resume_already_running,
                     "auto_mode": auto_resp,
                     "post_resume_status": status,
                     "post_resume_context": context,
@@ -301,6 +310,25 @@ class PersonFollowStateMachine:
         )
 
     @staticmethod
+    def _is_patrol_running(
+        status: dict[str, Any],
+        context: dict[str, Any],
+    ) -> bool:
+        status_data = status.get("data") or {}
+        context_data = context.get("data") or {}
+        if not status_data.get("executing"):
+            return False
+        if status_data.get("status") != 1:
+            return False
+        if status_data.get("inspection_state") != 1:
+            return False
+        return bool(
+            context_data.get("workflow_name")
+            or context_data.get("route_name")
+            or context_data.get("current_waypoint_name")
+        )
+
+    @staticmethod
     def _int_or_none(value: Any) -> int | None:
         try:
             if value is None or value == "":
@@ -309,32 +337,52 @@ class PersonFollowStateMachine:
         except (TypeError, ValueError):
             return None
 
+    @staticmethod
+    def _route_index_from_waypoint_name(value: Any) -> int | None:
+        if value is None:
+            return None
+        match = re.fullmatch(r"point_(\d+)", str(value).strip(), re.IGNORECASE)
+        if not match:
+            return None
+        return int(match.group(1))
+
     def _build_resume_plan(self, context: dict[str, Any]) -> dict[str, Any]:
         data = context.get("data") or {}
         current_index = self._int_or_none(data.get("current_waypoint_index"))
         last_index = self._int_or_none(data.get("last_arrived_waypoint_index"))
-        if current_index is not None and (
-            last_index is None or current_index > last_index
+        current_route_index = (
+            self._route_index_from_waypoint_name(data.get("current_waypoint_name"))
+            or current_index
+        )
+        last_route_index = (
+            self._route_index_from_waypoint_name(data.get("last_arrived_waypoint_name"))
+            or last_index
+        )
+        if current_route_index is not None and (
+            last_route_index is None or current_route_index > last_route_index
         ):
-            start_index = current_index
-        elif last_index is not None:
-            start_index = last_index + 1
+            start_index = current_route_index
+        elif last_route_index is not None:
+            start_index = last_route_index + 1
         else:
-            start_index = current_index or 1
+            start_index = current_route_index or 1
 
         return {
             "map_name": self.map_name,
             "route_name": (
                 self.route_name
+                or self.patrol_context.get("route_name")
+                or self.patrol_context.get("original_route_name")
                 or data.get("route_name")
-                or data.get("tree_name")
-                or data.get("workflow_name")
             ),
+            "workflow_name": data.get("workflow_name") or data.get("tree_name"),
             "start_index": max(1, start_index),
             "pause_current_waypoint_index": current_index,
             "pause_current_waypoint_name": data.get("current_waypoint_name"),
+            "pause_current_route_index": current_route_index,
             "pause_last_arrived_waypoint_index": last_index,
             "pause_last_arrived_waypoint_name": data.get("last_arrived_waypoint_name"),
+            "pause_last_arrived_route_index": last_route_index,
         }
 
     def _resolve_resume_map_name(self) -> str:
@@ -354,11 +402,9 @@ class PersonFollowStateMachine:
         route_name = (
             self.route_name
             or plan.get("route_name")
-            or data.get("route_name")
-            or data.get("tree_name")
-            or data.get("workflow_name")
             or self.patrol_context.get("route_name")
-            or self.patrol_context.get("workflow_name")
+            or self.patrol_context.get("original_route_name")
+            or data.get("route_name")
         )
         if not route_name:
             raise RuntimeError("route_name is required for patrol workflow rebuild")
@@ -378,15 +424,23 @@ class PersonFollowStateMachine:
         status_data = status.get("data") or {}
         current_index = self._int_or_none(data.get("current_waypoint_index"))
         last_index = self._int_or_none(data.get("last_arrived_waypoint_index"))
+        current_route_index = (
+            self._route_index_from_waypoint_name(data.get("current_waypoint_name"))
+            or current_index
+        )
+        last_route_index = (
+            self._route_index_from_waypoint_name(data.get("last_arrived_waypoint_name"))
+            or last_index
+        )
         expected_index = self._resolve_resume_start_index()
 
-        if current_index is not None and current_index < expected_index:
+        if current_route_index is not None and current_route_index < expected_index:
             return True
         if (
-            current_index is not None
-            and last_index is not None
-            and last_index > 0
-            and current_index <= last_index
+            current_route_index is not None
+            and last_route_index is not None
+            and last_route_index > 0
+            and current_route_index <= last_route_index
         ):
             return True
 
@@ -569,6 +623,18 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Disable rebuilding remaining patrol workflow after bad resume state.",
     )
+    parser.add_argument(
+        "--yolo-recv-timeout-s",
+        type=float,
+        default=0.5,
+        help="Seconds to wait for the next YOLO frame before injecting an empty frame while not in PATROL.",
+    )
+    parser.add_argument(
+        "--max-empty-frames-after-timeout",
+        type=int,
+        default=60,
+        help="Maximum consecutive synthetic empty frames after YOLO stops sending frames.",
+    )
     parser.add_argument("--dry-run", action="store_true")
     return parser.parse_args()
 
@@ -585,15 +651,66 @@ async def run_yolo_state_machine(args: argparse.Namespace) -> None:
         route_name=args.route_name,
         rebuild_on_bad_resume=not args.no_rebuild_on_bad_resume,
     )
+    last_frame: FrameInput | None = None
+    timeout_empty_frames = 0
     async with websockets.connect(uri, ping_interval=None) as ws:
-        async for raw in ws:
+        while True:
+            try:
+                raw = await asyncio.wait_for(
+                    ws.recv(),
+                    timeout=max(0.1, args.yolo_recv_timeout_s),
+                )
+            except asyncio.TimeoutError:
+                if last_frame is None or machine.state == FollowState.PATROL:
+                    continue
+                if timeout_empty_frames >= max(0, args.max_empty_frames_after_timeout):
+                    print(
+                        json.dumps(
+                            {
+                                "event": "yolo_timeout_empty_frame_limit_reached",
+                                "state": machine.state,
+                                "empty_frames": timeout_empty_frames,
+                                "timestamp_iso": PersonFollowStateMachine._now_iso(),
+                            }
+                        ),
+                        file=sys.stderr,
+                        flush=True,
+                    )
+                    continue
+
+                timeout_empty_frames += 1
+                frame = FrameInput(
+                    timestamp=int(time.time() * 1000),
+                    image_width=last_frame.image_width,
+                    image_height=last_frame.image_height,
+                    detections=[],
+                )
+                snapshot = await machine.handle_frame(frame)
+                print(json.dumps(asdict(snapshot)), flush=True)
+                continue
+            except Exception as exc:
+                print(
+                    json.dumps(
+                        {
+                            "event": "yolo_websocket_receive_failed",
+                            "error": str(exc),
+                            "timestamp_iso": PersonFollowStateMachine._now_iso(),
+                        }
+                    ),
+                    file=sys.stderr,
+                    flush=True,
+                )
+                raise
+
             msg = json.loads(raw)
             if msg.get("type") == "ping":
                 await ws.send(json.dumps({"type": "pong", "ts": msg.get("ts")}))
                 continue
             frame = FrameInput.from_yolo_ws_payload(msg)
+            last_frame = frame
+            timeout_empty_frames = 0
             snapshot = await machine.handle_frame(frame)
-            print(json.dumps(asdict(snapshot)))
+            print(json.dumps(asdict(snapshot)), flush=True)
 
 
 if __name__ == "__main__":
